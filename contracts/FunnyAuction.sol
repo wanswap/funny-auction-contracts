@@ -23,8 +23,8 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
 
     address[] public currentPlayers;
 
-    mapping(address => uint256) bidMap;
-    mapping(address => uint256) assetMap;
+    mapping(address => uint256) public bidMap;
+    mapping(address => uint256) public assetMap;
 
     event Offer(address indexed user, uint256 value);
 
