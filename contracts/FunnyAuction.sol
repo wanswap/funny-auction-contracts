@@ -3,6 +3,7 @@
 pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
@@ -17,21 +18,24 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
     uint256 public lastOfferBlock;
     uint256 public currentGoodValue;
     uint256 public currentBidPrice;
-    address public topPlayer;
+    address payable public topPlayer;
     address public secondPlayer;
+    address public waspToken;
 
     address[] public currentPlayers;
 
     mapping(address => uint256) bidMap;
     mapping(address => uint256) assetMap;
 
-    event Offer(address indexed user, uint value);
+    event Offer(address indexed user, uint256 value);
 
-    event Claim(address indexed user, uint value);
+    event Claim(address indexed user, uint256 value);
 
-    event Withdraw(address indexed user, uint value);
+    event Prize(address indexed user, uint256 value);
 
-    event GameFinish(address indexed top1, address indexed top2, uint prize);
+    event Withdraw(address indexed user, uint256 value);
+
+    event GameFinish(address indexed top1, address indexed top2, uint256 prize);
 
     /// @dev get current game status
     /// 0:idle, 1:coldDown, 2:bidding
@@ -54,65 +58,33 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
         require(status != 1, "It is colding down");
         require(value % 1 ether == 0, "Must input integer");
         require(value > 0, "Must larger than 0");
-        require(assetMap[msg.sender] + bidMap[msg.sender] + msg.value >= value, "Assets not enough");
+        require(
+            assetMap[msg.sender] + bidMap[msg.sender] + IERC20(waspToken).balanceOf(msg.sender) >= value,
+            "Assets not enough"
+        );
+        require(msg.value == 0, "Please do not send WAN.");
 
         // last round finish
         if (status == 0) {
-            for (uint256 i = 0; i < currentPlayers.length; i++) {
-                if (currentPlayers[i] == topPlayer) {
-                    assetMap[topPlayer] = assetMap[topPlayer]
-                        .add(currentGoodValue);
-                    liquidityPool = liquidityPool.sub(currentGoodValue);
-                    liquidityPool = liquidityPool.add(bidMap[topPlayer]);
-                    bidMap[topPlayer] = 0;
-                    continue;
-                }
-
-                if (currentPlayers[i] == secondPlayer) {
-                    liquidityPool = liquidityPool.add(bidMap[secondPlayer]);
-                    bidMap[secondPlayer] = 0;
-                    continue;
-                }
-
-                assetMap[currentPlayers[i]] = assetMap[currentPlayers[i]].add(
-                    bidMap[currentPlayers[i]]
-                );
-                bidMap[currentPlayers[i]] = 0;
-            }
-            // clear players
-            delete currentPlayers;
-            emit GameFinish(topPlayer, secondPlayer, currentGoodValue);
-            topPlayer = address(0);
-            secondPlayer = address(0);
-            // calc currentGoodValue
-            currentGoodValue = calcGoodsValue();
-            currentBidPrice = 0;
-            require( value <= currentGoodValue / 2, "first bid must less then 1/2 good value");
+            settlement();
             status = 2;
         }
 
         // biding
         if (status == 2) {
             require(value - currentBidPrice >= 1 ether, "Price too low");
-            require(value > bidMap[msg.sender], "New price must larger than old");
-            uint pay = value - bidMap[msg.sender];
+            require(
+                value > bidMap[msg.sender],
+                "New price must larger than old"
+            );
+            uint256 pay = value - bidMap[msg.sender];
             // use wan from assets
             if (assetMap[msg.sender] >= pay) {
                 assetMap[msg.sender] = assetMap[msg.sender].sub(pay);
             } else {
-                if (msg.value == pay) {
-                    // nothing to do.
-                } else if (msg.value > pay) {
-                    assetMap[msg.sender] = assetMap[msg.sender].add(
-                        msg.value.sub(pay)
-                    );
-                } else {
-                    assetMap[msg.sender] = assetMap[msg.sender].sub(
-                        pay.sub(msg.value)
-                    );
-                }
+                IERC20(waspToken).transferFrom(msg.sender, address(this), pay);
             }
-
+            
             if (bidMap[msg.sender] == 0) {
                 currentPlayers.push(msg.sender);
             }
@@ -126,44 +98,18 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
         }
     }
 
-    function calcGoodsValue() public view returns (uint) {
-        uint value = (liquidityPool - currentGoodValue) / percent;
-        if (value < 1 ether) {
-            return 0;
+    function calcGoodsValue() public view returns (uint256) {
+        if (liquidityPool >= highestValue) {
+            return highestValue;
         }
-
-        if (value < 2 ether) {
-            return 1 ether;
-        }
-
-        if (value < 5 ether) {
-            return 2 ether;
-        }
-
-        if (value < 10 ether) {
-            return 5 ether;
-        }
-
-        if (value < 20 ether) {
-            return 10 ether;
-        }
-
-        if (value < 50 ether) {
-            return 20 ether;
-        }
-
-        if (value < 100 ether) {
-            return 50 ether;
-        }
-
-        if (value <= highestValue) {
-            return 100 ether;
-        }
-
-        return highestValue;
+        return 0;
     }
 
-    function getPlayersInfo() public view returns (address[] memory, uint256[] memory) {
+    function getPlayersInfo()
+        public
+        view
+        returns (address[] memory, uint256[] memory)
+    {
         address[] memory addrs = new address[](currentPlayers.length);
         uint256[] memory bids = new uint256[](currentPlayers.length);
 
@@ -177,15 +123,18 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
 
     /// @dev claim user's wan back
     function claim() external {
-        uint amount = assetMap[msg.sender];
+        uint256 amount = assetMap[msg.sender];
         assetMap[msg.sender] = 0;
-        msg.sender.transfer(amount);
-        emit Claim(msg.sender, amount);
+        if (amount > 0) {
+            IERC20(waspToken).transfer(msg.sender, amount);
+            emit Claim(msg.sender, amount);
+        }
     }
 
     /// @dev deposit wans get ALT (Auction Liquidity Pool Token)
     receive() external payable {
         liquidityPool = liquidityPool.add(msg.value);
+        currentGoodValue = calcGoodsValue();
         _mint(msg.sender, msg.value);
     }
 
@@ -193,9 +142,8 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
     function withdraw() external {
         uint256 altBalance = balanceOf(msg.sender);
         require(altBalance > 0, "not enough ALT");
-        uint256 payAmount = liquidityPool * altBalance /
-            totalSupply();
-        
+        uint256 payAmount = (liquidityPool * altBalance) / totalSupply();
+
         liquidityPool = liquidityPool.sub(payAmount);
         _burn(msg.sender, altBalance);
         msg.sender.transfer(payAmount);
@@ -206,11 +154,41 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
         uint256 _highestValue,
         uint256 _percent,
         uint256 _coldDownBlock,
-        uint256 _confirmBlock
+        uint256 _confirmBlock,
+        address _waspToken
     ) external onlyOwner {
         highestValue = _highestValue;
         percent = _percent;
         coldDownBlock = _coldDownBlock;
         confirmBlock = _confirmBlock;
+        waspToken = _waspToken;
+    }
+
+    function settlement() public {
+        uint256 status = getStatus();
+        require(status == 0, "settlement must wait for bid finsih.");
+
+        for (uint256 i = 0; i < currentPlayers.length; i++) {
+            if (currentPlayers[i] == topPlayer) {
+                liquidityPool = liquidityPool.sub(currentGoodValue);
+                IERC20(waspToken).transfer(address(1), bidMap[topPlayer]); //burn;
+                bidMap[topPlayer] = 0;
+                topPlayer.transfer(currentGoodValue);
+                emit Prize(topPlayer, currentGoodValue);
+                continue;
+            }
+
+            assetMap[currentPlayers[i]] = assetMap[currentPlayers[i]].add(
+                bidMap[currentPlayers[i]]
+            );
+            bidMap[currentPlayers[i]] = 0;
+        }
+        // clear players
+        delete currentPlayers;
+        emit GameFinish(topPlayer, secondPlayer, currentGoodValue);
+        topPlayer = address(0);
+        secondPlayer = address(0);
+        currentBidPrice = 0;
+        currentGoodValue = calcGoodsValue();
     }
 }

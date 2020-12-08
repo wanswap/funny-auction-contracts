@@ -1,6 +1,7 @@
 const { expectRevert, time } = require('@openzeppelin/test-helpers');
 const { web3 } = require('@openzeppelin/test-helpers/src/setup');
 const FunnyAuction = artifacts.require('FunnyAuction');
+const TestToken = artifacts.require('TestToken');
 
 function fromWei(value) {
   return web3.utils.fromWei(value.toString());
@@ -12,13 +13,25 @@ function toWei(value) {
 
 contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
   before(async () => {
+    this.tt = await TestToken.new({ from: alice });
     this.sc = await FunnyAuction.new({ from: alice });
+    console.log('sc', this.sc.address);
+
+    await this.tt.approve(this.sc.address, toWei('1000000000'), {from: alice});
+    await this.tt.transfer(p1, toWei('10000'), {from: alice});
+    await this.tt.transfer(p2, toWei('10000'), {from: alice});
+    await this.tt.transfer(p3, toWei('10000'), {from: alice});
+    await this.tt.approve(this.sc.address, toWei('1000000000'), {from: p1});
+    await this.tt.approve(this.sc.address, toWei('1000000000'), {from: p2});
+    await this.tt.approve(this.sc.address, toWei('1000000000'), {from: p3});
+
+
     console.log([alice, bob, carol, dev, minter]);
   });
 
   it('should set correct state variables', async () => {
 
-    await this.sc.config(web3.utils.toWei('100'), '10', '20', '30', { from: alice });
+    await this.sc.config(web3.utils.toWei('100'), '10', '20', '30', this.tt.address, { from: alice });
     await this.sc.transferOwnership(bob, {from: alice});
     const owner = await this.sc.owner();
     const highestValue = await this.sc.highestValue();
@@ -36,7 +49,7 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
   });
 
   it('should allow deposit', async () => {
-    await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000')});
+    let ret = await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000'), gas: 200000});
     const b = await web3.eth.getBalance(this.sc.address);
     const liquidityPool = await this.sc.liquidityPool();
     const ALT = await this.sc.balanceOf(alice);
@@ -57,7 +70,7 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
   });
 
   it('should success game round 1', async () => { 
-    await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000')});
+    await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000'), gas: 200000});
 
     let b = await web3.eth.getBalance(this.sc.address);
     console.log('sc balance', fromWei(b.toString()))
@@ -72,12 +85,14 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
     const calcValue = await this.sc.calcGoodsValue();
     const liquidityPool = await this.sc.liquidityPool();
     console.log('goodValue', fromWei(goodValue.toString()), web3.utils.fromWei(calcValue.toString()), fromWei(liquidityPool.toString()));
-    await this.sc.offer(web3.utils.toWei('1'), {from: p1, value:web3.utils.toWei('1')});
-    await this.sc.offer(web3.utils.toWei('2'), {from: p2, value:web3.utils.toWei('2')});
-    await this.sc.offer(web3.utils.toWei('3'), {from: p3, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('4'), {from: p1, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('5'), {from: p2, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('6'), {from: p3, value:web3.utils.toWei('3')});
+    console.log('wan balance:', fromWei(await web3.eth.getBalance(p1)), fromWei(await web3.eth.getBalance(p2)), fromWei(await web3.eth.getBalance(p3)));
+    console.log('token balance:', fromWei(await this.tt.balanceOf(p1)), fromWei(await this.tt.balanceOf(p2)), fromWei(await this.tt.balanceOf(p3)));
+    await this.sc.offer(web3.utils.toWei('1'), {from: p1});
+    await this.sc.offer(web3.utils.toWei('2'), {from: p2});
+    await this.sc.offer(web3.utils.toWei('3'), {from: p3});
+    await this.sc.offer(web3.utils.toWei('4'), {from: p1});
+    await this.sc.offer(web3.utils.toWei('5'), {from: p2});
+    await this.sc.offer(web3.utils.toWei('6'), {from: p3});
     let topPlayer = await this.sc.topPlayer();
     let secondPlayer = await this.sc.secondPlayer();
     let currentBidPrice = await this.sc.currentBidPrice();
@@ -85,11 +100,11 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
     status = await this.sc.getStatus();
     console.log('status', status.toString());
 
-    await this.sc.offer(web3.utils.toWei('7'), {from: p1, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('8'), {from: p2, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('9'), {from: p3, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('10'), {from: p1, value:web3.utils.toWei('3')});
-    await this.sc.offer(web3.utils.toWei('11'), {from: p2, value:web3.utils.toWei('3')});
+    await this.sc.offer(web3.utils.toWei('7'), {from: p1});
+    await this.sc.offer(web3.utils.toWei('8'), {from: p2});
+    await this.sc.offer(web3.utils.toWei('9'), {from: p3});
+    await this.sc.offer(web3.utils.toWei('10'), {from: p1});
+    await this.sc.offer(web3.utils.toWei('11'), {from: p2});
     topPlayer = await this.sc.topPlayer();
     secondPlayer = await this.sc.secondPlayer();
     currentBidPrice = await this.sc.currentBidPrice();
@@ -101,9 +116,18 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
       status = await this.sc.getStatus();
       console.log('status', status.toString());
     }
+
+    console.log('wan balance:', fromWei(await web3.eth.getBalance(p1)), fromWei(await web3.eth.getBalance(p2)), fromWei(await web3.eth.getBalance(p3)));
+    console.log('token balance:', fromWei(await this.tt.balanceOf(p1)), fromWei(await this.tt.balanceOf(p2)), fromWei(await this.tt.balanceOf(p3)));
+    await this.sc.settlement();
+    await this.sc.claim({from: p1});
+    await this.sc.claim({from: p2});
+    await this.sc.claim({from: p3});
+    console.log('wan balance:', fromWei(await web3.eth.getBalance(p1)), fromWei(await web3.eth.getBalance(p2)), fromWei(await web3.eth.getBalance(p3)));
+    console.log('token balance:', fromWei(await this.tt.balanceOf(p1)), fromWei(await this.tt.balanceOf(p2)), fromWei(await this.tt.balanceOf(p3)));
   });
 
-  it('should success game round 2', async () => { 
+  it.skip('should success game round 2', async () => { 
     // await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000')});
 
     let b = await web3.eth.getBalance(this.sc.address);
@@ -150,7 +174,7 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
     }
   });
   
-  it('should success game round 3', async () => { 
+  it.skip('should success game round 3', async () => { 
     // await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000')});
 
     let b = await web3.eth.getBalance(this.sc.address);
@@ -197,7 +221,7 @@ contract('FunnyAuction', ([alice, bob, carol, dev, minter, p1, p2, p3]) => {
     }
   });
 
-  it('should success game round 4', async () => { 
+  it.skip('should success game round 4', async () => { 
     // await web3.eth.sendTransaction({from: alice, to: this.sc.address, value: web3.utils.toWei('2000')});
 
     let b = await web3.eth.getBalance(this.sc.address);
