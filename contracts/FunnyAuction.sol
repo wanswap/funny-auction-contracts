@@ -10,7 +10,6 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
     using SafeMath for uint256;
 
     uint256 public highestValue;
-    uint256 public percent;
     uint256 public coldDownBlock;
     uint256 public confirmBlock;
 
@@ -152,13 +151,11 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
 
     function config(
         uint256 _highestValue,
-        uint256 _percent,
         uint256 _coldDownBlock,
         uint256 _confirmBlock,
         address _waspToken
     ) external onlyOwner {
         highestValue = _highestValue;
-        percent = _percent;
         coldDownBlock = _coldDownBlock;
         confirmBlock = _confirmBlock;
         waspToken = _waspToken;
