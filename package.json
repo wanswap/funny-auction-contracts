@@ -6,7 +6,7 @@
   "dependencies": {
     "@openzeppelin/contracts": "^3.2.0",
     "@openzeppelin/test-helpers": "^0.5.7",
-    "truffle": "^5.1.49",
+    "truffle": "5.1.22",
     "truffle-privatekey-provider": "^1.5.0",
     "wanchain-truffle-sdk": "^1.0.0"
   },
