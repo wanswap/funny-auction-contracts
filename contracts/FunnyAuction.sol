@@ -20,6 +20,7 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
     address payable public topPlayer;
     address public secondPlayer;
     address public waspToken;
+    address public goodsToken;
 
     address[] public currentPlayers;
 
@@ -131,10 +132,17 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
     }
 
     /// @dev deposit wans get ALT (Auction Liquidity Pool Token)
-    receive() external payable {
-        liquidityPool = liquidityPool.add(msg.value);
+    // receive() external payable {
+    //     liquidityPool = liquidityPool.add(msg.value);
+    //     currentGoodValue = calcGoodsValue();
+    //     _mint(msg.sender, msg.value);
+    // }
+
+    function deposit(uint amount) external {
+        liquidityPool = liquidityPool.add(amount);
         currentGoodValue = calcGoodsValue();
-        _mint(msg.sender, msg.value);
+        IERC20(goodsToken).transferFrom(msg.sender, address(this), amount);
+        _mint(msg.sender, amount);
     }
 
     /// @dev send ALT get wans back
@@ -145,7 +153,7 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
 
         liquidityPool = liquidityPool.sub(payAmount);
         _burn(msg.sender, altBalance);
-        msg.sender.transfer(payAmount);
+        IERC20(goodsToken).transfer(msg.sender, payAmount);
         emit Withdraw(msg.sender, payAmount);
     }
 
@@ -153,12 +161,14 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
         uint256 _highestValue,
         uint256 _coldDownBlock,
         uint256 _confirmBlock,
-        address _waspToken
+        address _waspToken,
+        address _goodsToken
     ) external onlyOwner {
         highestValue = _highestValue;
         coldDownBlock = _coldDownBlock;
         confirmBlock = _confirmBlock;
         waspToken = _waspToken;
+        goodsToken = _goodsToken;
     }
 
     function settlement() public {
@@ -170,7 +180,7 @@ contract FunnyAuction is ERC20("Auction Liquidity Pool Token", "ALT"), Ownable {
                 liquidityPool = liquidityPool.sub(currentGoodValue);
                 IERC20(waspToken).transfer(address(1), bidMap[topPlayer]); //burn;
                 bidMap[topPlayer] = 0;
-                topPlayer.transfer(currentGoodValue);
+                IERC20(goodsToken).transfer(topPlayer, currentGoodValue);
                 emit Prize(topPlayer, currentGoodValue);
                 continue;
             }
